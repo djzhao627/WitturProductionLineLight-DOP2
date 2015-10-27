@@ -22,7 +22,6 @@ public class SendMail {
 	}
 
 	public void sendWarningEmail(String mail) {
-		System.out.println("email:" + mail.split(";")[0]);
 		MailSenderInfo mailInfo = new MailSenderInfo();
 		mailInfo.setMailServerHost("smtp.163.com");
 		mailInfo.setMailServerPort("25");

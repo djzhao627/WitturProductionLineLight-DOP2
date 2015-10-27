@@ -16,6 +16,7 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
+import java.util.Vector;
 
 import javax.swing.ImageIcon;
 import javax.swing.JFrame;
@@ -132,6 +133,7 @@ public class WarningScreen extends JFrame {
 	protected int TPLineID = 0;
 	/** 计划ID */
 	protected int TPPlanID = 0;
+	private JLabel date;
 
 	// private int zaoBan = Integer.pdf_Hm.parse("07:15");
 
@@ -219,7 +221,7 @@ public class WarningScreen extends JFrame {
 		yellowLight.setBounds(629, 140, 70, 70);
 		panel_1.add(yellowLight);
 
-		JLabel date = new JLabel("");
+		date = new JLabel("");
 		date.setHorizontalAlignment(SwingConstants.CENTER);
 		date.setFont(new Font("楷体", Font.BOLD, 34));
 		date.setForeground(new Color(255, 255, 255));
@@ -392,6 +394,10 @@ public class WarningScreen extends JFrame {
 		separator.setBounds(0, 426, 1237, 18);
 		panel_1.add(separator);
 
+		// 实例化一个SwingWorker 控制日期更新
+		SwingWorker dateTime = dateUpdate();
+		dateTime.execute();
+
 		// 实例化一个SwingWorker 控制UI刷新
 		SwingWorker bgProcess = backgroundProcess();
 		bgProcess.execute();
@@ -511,7 +517,8 @@ public class WarningScreen extends JFrame {
 								// 获取新产节拍数
 								taktNum = taktTimeList.get(0).getNum();
 								// 更新节拍数
-								taktClock.setSecond(taktTimeList.get(0).getTakt());
+								taktClock.setSecond(taktTimeList.get(0)
+										.getTakt());
 							} else {
 								greenLight.setBackground(new Color(190, 190,
 										190));
@@ -900,6 +907,37 @@ public class WarningScreen extends JFrame {
 	}
 
 	/**
+	 * 日期时间的更新
+	 * 
+	 * @return
+	 */
+	private SwingWorker dateUpdate() {
+		SwingWorker background = new SwingWorker<String, String>() {
+
+			@Override
+			protected String doInBackground() throws Exception {
+				while (true) {
+					Date d = new Date();
+					if ("00:00".equals(df_Hm.format(d))
+							|| "00:01".equals(df_Hm.format(d))) {
+						publish(df_ymr.format(d));
+					}
+					Thread.sleep(60000);
+				}
+			}
+
+			@Override
+			protected void process(List<String> chunks) {
+				super.process(chunks);
+				date.setText("日期：" + chunks.get(0));
+			}
+
+		};
+		return background;
+
+	}
+
+	/**
 	 * 监控按钮状态
 	 * 
 	 * @return
@@ -911,40 +949,45 @@ public class WarningScreen extends JFrame {
 			protected String doInBackground() throws Exception {
 
 				wld = new WarningLightDao();
+				// while (true) {
+				// 红色按钮计数复位
+				// if (redBtnCount < 0) {
+				// redBtnCount = 0;
+				// }
+				// AlarmData ad = new AlarmData();
+				// ad = wld.getNewButtonStat();
+				// if (ad.getId() == id) {
+				// Thread.sleep(20);
+				// continue;
+				// } else {
+				// int[] s = new int[3];
+				// s[0] = Integer.parseInt(ad.getBid());
+				// s[1] = Integer.parseInt(ad.getKeyid());
+				// s[2] = ad.getYn();
+				// id = ad.getId();
+				// publish(s);
+				// }
+				// Thread.sleep(20);
+
+				wld = new WarningLightDao();
+				List<AlarmData> adList = new ArrayList<AlarmData>();
 				int id = 0;
 				while (true) {
+					// 获取最新按钮状态
+					adList = wld.getNewButtonStat2();
 					// 红色按钮计数复位
 					if (redBtnCount < 0) {
 						redBtnCount = 0;
 					}
-					AlarmData ad = new AlarmData();
-					ad = wld.getNewButtonStat();
-					if (ad.getId() == id) {
-						Thread.sleep(20);
-						continue;
-					} else {
+					for (AlarmData l : adList) {
 						int[] s = new int[3];
-						s[0] = Integer.parseInt(ad.getBid());
-						s[1] = Integer.parseInt(ad.getKeyid());
-						s[2] = ad.getYn();
-						id = ad.getId();
+						s[0] = Integer.parseInt(l.getBid());
+						s[1] = Integer.parseInt(l.getKeyid());
+						s[2] = l.getYn();
+						Thread.sleep(50);
 						publish(s);
 					}
-					Thread.sleep(20);
-					// System.out // .println(s[0] + "----" + s[1] + "----" +
-					// s[2]); publish(s); } Thread.sleep(20); }
-
-					/*
-					 * wld = new WarningLightDao(); int id = 0; while (true) {
-					 * List<AlarmData> adList = new ArrayList<AlarmData>(); //
-					 * 获取最新按钮状态 adList = wld.getNewButtonStat2(); // 红色按钮计数复位 if
-					 * (redBtnCount < 0) { redBtnCount = 0; } int i = 0; for
-					 * (AlarmData l : adList) { int[] s = new int[3]; s[0] =
-					 * Integer.parseInt(l.getBid()); s[1] =
-					 * Integer.parseInt(l.getKeyid()); s[2] = l.getYn(); id =
-					 * l.getId(); // System.out // .println(s[0] + "----" + s[1]
-					 * + "----" + s[2]);
-					 */
+					Thread.sleep(500);
 				}
 
 			}
@@ -968,31 +1011,37 @@ public class WarningScreen extends JFrame {
 							red1 = true;
 							redBtnCount++;
 						} else {
-							p01.setBackground(Color.DARK_GRAY);
+							if (!green1 && !yellow1) {
+								p01.setBackground(Color.DARK_GRAY);
+							}
 							redBtnCount--;
 							red1 = false;
 						}
 						break;
 					case 2:
-						if (!red1) {
-							if (btn[2] == 1) {
+						if (btn[2] == 1) {
+							if (!red1) {
 								p01.setBackground(new Color(255, 255, 0));
-								yellow1 = true;
-							} else {
-								p01.setBackground(Color.DARK_GRAY);
-								yellow1 = false;
 							}
+							yellow1 = true;
+						} else {
+							if (!green1 && !red1) {
+								p01.setBackground(Color.DARK_GRAY);
+							}
+							yellow1 = false;
 						}
 						break;
 					case 3:
-						if (!red1 && !yellow1) {
-							if (btn[2] == 1) {
+						if (btn[2] == 1) {
+							if (!red1 && !yellow1) {
 								p01.setBackground(new Color(51, 255, 0));
-								green1 = true;
-							} else {
-								p01.setBackground(Color.DARK_GRAY);
-								green1 = false;
 							}
+							green1 = true;
+						} else {
+							if (!red1 && !yellow1) {
+								p01.setBackground(Color.DARK_GRAY);
+							}
+							green1 = false;
 						}
 						break;
 					case 4:
@@ -1002,31 +1051,37 @@ public class WarningScreen extends JFrame {
 							red2 = true;
 							redBtnCount++;
 						} else {
-							p02.setBackground(Color.DARK_GRAY);
+							if (!green2 && !yellow2) {
+								p02.setBackground(Color.DARK_GRAY);
+							}
 							red2 = false;
 							redBtnCount--;
 						}
 						break;
 					case 5:
-						if (!red2) {
-							if (btn[2] == 1) {
+						if (btn[2] == 1) {
+							if (!red2) {
 								p02.setBackground(new Color(255, 255, 0));
-								yellow2 = true;
-							} else {
-								p02.setBackground(Color.DARK_GRAY);
-								yellow2 = false;
 							}
+							yellow2 = true;
+						} else {
+							if (!red2 && !green2) {
+								p02.setBackground(Color.DARK_GRAY);
+							}
+							yellow2 = false;
 						}
 						break;
 					case 6:
-						if (!red2 && !yellow2) {
-							if (btn[2] == 1) {
+						if (btn[2] == 1) {
+							if (!red2 && !yellow2) {
 								p02.setBackground(new Color(51, 255, 0));
-								green2 = true;
-							} else {
-								p02.setBackground(Color.DARK_GRAY);
-								green2 = false;
 							}
+							green2 = true;
+						} else {
+							if (!red2 && !yellow2) {
+								p02.setBackground(Color.DARK_GRAY);
+							}
+							green2 = false;
 						}
 						break;
 
@@ -1044,31 +1099,37 @@ public class WarningScreen extends JFrame {
 							red3 = true;
 							redBtnCount++;
 						} else {
-							p03.setBackground(Color.DARK_GRAY);
+							if (!green3 && !yellow3) {
+								p03.setBackground(Color.DARK_GRAY);
+							}
 							red3 = false;
 							redBtnCount--;
 						}
 						break;
 					case 2:
-						if (!red3) {
-							if (btn[2] == 1) {
+						if (btn[2] == 1) {
+							if (!red3) {
 								p03.setBackground(new Color(255, 255, 0));
-								yellow3 = true;
-							} else {
-								p03.setBackground(Color.DARK_GRAY);
-								yellow3 = false;
 							}
+							yellow3 = true;
+						} else {
+							if (!red3 && !green3) {
+								p03.setBackground(Color.DARK_GRAY);
+							}
+							yellow3 = false;
 						}
 						break;
 					case 3:
-						if (!red3 && !yellow3) {
-							if (btn[2] == 1) {
+						if (btn[2] == 1) {
+							if (!red3 && !yellow3) {
 								p03.setBackground(new Color(51, 255, 0));
-								green3 = true;
-							} else {
-								p03.setBackground(Color.DARK_GRAY);
-								green3 = false;
 							}
+							green3 = true;
+						} else {
+							if (!red3 && !yellow3) {
+								p03.setBackground(Color.DARK_GRAY);
+							}
+							green3 = false;
 						}
 						break;
 					case 4:
@@ -1078,31 +1139,37 @@ public class WarningScreen extends JFrame {
 							red4 = true;
 							redBtnCount++;
 						} else {
-							p04.setBackground(Color.DARK_GRAY);
+							if (!green4 && !yellow4) {
+								p04.setBackground(Color.DARK_GRAY);
+							}
 							red4 = false;
 							redBtnCount--;
 						}
 						break;
 					case 5:
-						if (!red4) {
-							if (btn[2] == 1) {
+						if (btn[2] == 1) {
+							if (!red4) {
 								p04.setBackground(new Color(255, 255, 0));
-								yellow4 = true;
-							} else {
-								p04.setBackground(Color.DARK_GRAY);
-								yellow4 = false;
 							}
+							yellow4 = true;
+						} else {
+							if (!red4 && !green4) {
+								p04.setBackground(Color.DARK_GRAY);
+							}
+							yellow4 = false;
 						}
 						break;
 					case 6:
-						if (!red4 && !yellow4) {
-							if (btn[2] == 1) {
+						if (btn[2] == 1) {
+							if (!red4 && !yellow4) {
 								p04.setBackground(new Color(51, 255, 0));
-								green4 = true;
-							} else {
-								p04.setBackground(Color.DARK_GRAY);
-								green4 = false;
 							}
+							green4 = true;
+						} else {
+							if (!red4 && !yellow4) {
+								p04.setBackground(Color.DARK_GRAY);
+							}
+							green4 = false;
 						}
 						break;
 
@@ -1120,31 +1187,37 @@ public class WarningScreen extends JFrame {
 							red5 = true;
 							redBtnCount++;
 						} else {
-							p05.setBackground(Color.DARK_GRAY);
+							if (!green5 && !yellow5) {
+								p05.setBackground(Color.DARK_GRAY);
+							}
 							red5 = false;
 							redBtnCount--;
 						}
 						break;
 					case 2:
-						if (!red5) {
-							if (btn[2] == 1) {
+						if (btn[2] == 1) {
+							if (!red5) {
 								p05.setBackground(new Color(255, 255, 0));
-								yellow5 = true;
-							} else {
-								p05.setBackground(Color.DARK_GRAY);
-								yellow5 = false;
 							}
+							yellow5 = true;
+						} else {
+							if (!red5 && !green5) {
+								p05.setBackground(Color.DARK_GRAY);
+							}
+							yellow5 = false;
 						}
 						break;
 					case 3:
-						if (!red5 && !yellow5) {
-							if (btn[2] == 1) {
+						if (btn[2] == 1) {
+							if (!red5 && !yellow5) {
 								p05.setBackground(new Color(51, 255, 0));
-								green5 = true;
-							} else {
-								p05.setBackground(Color.DARK_GRAY);
-								green5 = false;
 							}
+							green5 = true;
+						} else {
+							if (!red5 && !yellow5) {
+								p05.setBackground(Color.DARK_GRAY);
+							}
+							green5 = false;
 						}
 						break;
 					case 4:
@@ -1154,31 +1227,37 @@ public class WarningScreen extends JFrame {
 							red6 = true;
 							redBtnCount++;
 						} else {
-							p06.setBackground(Color.DARK_GRAY);
+							if (!yellow6 && !green6) {
+								p06.setBackground(Color.DARK_GRAY);
+							}
 							red6 = false;
 							redBtnCount--;
 						}
 						break;
 					case 5:
-						if (!red6) {
-							if (btn[2] == 1) {
+						if (btn[2] == 1) {
+							if (!red6) {
 								p06.setBackground(new Color(255, 255, 0));
-								yellow6 = true;
-							} else {
-								p06.setBackground(Color.DARK_GRAY);
-								yellow6 = false;
 							}
+							yellow6 = true;
+						} else {
+							if (!red6 && !green6) {
+								p06.setBackground(Color.DARK_GRAY);
+							}
+							yellow6 = false;
 						}
 						break;
 					case 6:
-						if (!red6 && !yellow6) {
-							if (btn[2] == 1) {
+						if (btn[2] == 1) {
+							if (!red6 && !yellow6) {
 								p06.setBackground(new Color(51, 255, 0));
-								green6 = true;
-							} else {
-								p06.setBackground(Color.DARK_GRAY);
-								green6 = false;
 							}
+							green6 = true;
+						} else {
+							if (!red6 && !yellow6) {
+								p06.setBackground(Color.DARK_GRAY);
+							}
+							green6 = false;
 						}
 						break;
 
@@ -1196,31 +1275,37 @@ public class WarningScreen extends JFrame {
 							red7 = true;
 							redBtnCount++;
 						} else {
-							p07.setBackground(Color.DARK_GRAY);
+							if (!yellow7 && !green7) {
+								p07.setBackground(Color.DARK_GRAY);
+							}
 							red7 = false;
 							redBtnCount--;
 						}
 						break;
 					case 2:
-						if (!red7) {
-							if (btn[2] == 1) {
+						if (btn[2] == 1) {
+							if (!red7) {
 								p07.setBackground(new Color(255, 255, 0));
-								yellow7 = true;
-							} else {
-								p07.setBackground(Color.DARK_GRAY);
-								yellow7 = false;
 							}
+							yellow7 = true;
+						} else {
+							if (!red7 && !green7) {
+								p07.setBackground(Color.DARK_GRAY);
+							}
+							yellow7 = false;
 						}
 						break;
 					case 3:
-						if (!red7 && !yellow7) {
-							if (btn[2] == 1) {
+						if (btn[2] == 1) {
+							if (!red7 && !yellow7) {
 								p07.setBackground(new Color(51, 255, 0));
-								green7 = true;
-							} else {
-								p07.setBackground(Color.DARK_GRAY);
-								green7 = false;
 							}
+							green7 = true;
+						} else {
+							if (!red7 && !yellow7) {
+								p07.setBackground(Color.DARK_GRAY);
+							}
+							green7 = false;
 						}
 						break;
 					case 4:
@@ -1230,31 +1315,37 @@ public class WarningScreen extends JFrame {
 							red8 = true;
 							redBtnCount++;
 						} else {
-							p08.setBackground(Color.DARK_GRAY);
+							if (!yellow8 && !green8) {
+								p08.setBackground(Color.DARK_GRAY);
+							}
 							red8 = false;
 							redBtnCount--;
 						}
 						break;
 					case 5:
-						if (!red8) {
-							if (btn[2] == 1) {
+						if (btn[2] == 1) {
+							if (!red8) {
 								p08.setBackground(new Color(255, 255, 0));
-								yellow8 = true;
-							} else {
-								p08.setBackground(Color.DARK_GRAY);
-								yellow8 = false;
 							}
+							yellow8 = true;
+						} else {
+							if (!red8 && !green8) {
+								p08.setBackground(Color.DARK_GRAY);
+							}
+							yellow8 = false;
 						}
 						break;
 					case 6:
-						if (!red8 && !yellow8) {
-							if (btn[2] == 1) {
+						if (btn[2] == 1) {
+							if (!red8 && !yellow8) {
 								p08.setBackground(new Color(51, 255, 0));
-								green8 = true;
-							} else {
-								p08.setBackground(Color.DARK_GRAY);
-								green8 = false;
 							}
+							green8 = true;
+						} else {
+							if (!red8 && !yellow8) {
+								p08.setBackground(Color.DARK_GRAY);
+							}
+							green8 = false;
 						}
 						break;
 

@@ -134,7 +134,7 @@ public class WarningLightDao {
 		Statement statement = conn.createStatement();
 		// 通过查询返回结果
 		ResultSet rs = statement
-				.executeQuery("SELECT  id,bid,keyid,ttime,yn,status FROM(SELECT * FROM t_alarmdata ORDER BY ttime DESC LIMIT 2000) a GROUP BY a.bid,a.keyid");
+				.executeQuery("SELECT  id,bid,keyid,ttime,yn,status FROM(SELECT * FROM t_alarmdata WHERE bid BETWEEN 9 AND 12 ORDER BY ttime DESC LIMIT 2000) a GROUP BY a.bid,a.keyid");
 		// 循环取出 rs 中的结果
 		while (rs.next()) {
 			AlarmData ad = new AlarmData();
@@ -397,6 +397,7 @@ public class WarningLightDao {
 		while (rs.next()) {
 			if (rs.getString(1).equals("AA挂件")) {
 				num = rs.getInt(2);
+				System.out.println(num);
 			}
 		}
 		rs.close();
