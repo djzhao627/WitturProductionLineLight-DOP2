@@ -13,6 +13,9 @@ public class TPPlan {
 
 	/** 总产量（默认设定为100） */
 	private int TotalNum;
+	
+	/** 产线名 */
+	private String TPLineName;
 
 	/** 班次，默认为0，0为早班，1为中班，2为晚班 */
 	private int Ranger;
@@ -40,6 +43,14 @@ public class TPPlan {
 
 	public void setTotalNum(int totalNum) {
 		TotalNum = totalNum;
+	}
+
+	public String getTPLineName() {
+		return TPLineName;
+	}
+
+	public void setTPLineName(String tPLineName) {
+		TPLineName = tPLineName;
 	}
 
 	public int getRanger() {

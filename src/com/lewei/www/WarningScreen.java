@@ -16,7 +16,6 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
-import java.util.Vector;
 
 import javax.swing.ImageIcon;
 import javax.swing.JFrame;
@@ -29,12 +28,22 @@ import javax.swing.Timer;
 import javax.swing.border.EmptyBorder;
 
 import com.lewei.dao.WarningLightDao;
+import com.lewei.mail.SendMail;
 import com.lewei.model.AlarmData;
 import com.lewei.model.ChangeTime;
 import com.lewei.model.PauseTime;
+import com.lewei.model.TPLine;
+import com.lewei.model.TPPlan;
 import com.lewei.model.Takt;
+import com.lewei.model.Warning;
+import com.lewei.model.WarningInfo;
 
 public class WarningScreen extends JFrame {
+
+	/** 计划模型 */
+	TPPlan tpplan = null;
+	/** 产线模型 */
+	TPLine tpline = null;
 
 	private static int redBtnCount = 0;
 	private static long changeTimeCD = 0;
@@ -46,6 +55,16 @@ public class WarningScreen extends JFrame {
 	private SimpleDateFormat df_Hm = new SimpleDateFormat("HH:mm");
 	private SimpleDateFormat df_Hms = new SimpleDateFormat("HH:mm:ss");
 	private SimpleDateFormat df_ymr = new SimpleDateFormat("yyyy-MM-dd");
+
+	/** 上班时间 */
+	private static String startTime = null;
+	/** 下班时间 */
+	private static String endTime = null;
+	/** 当前产线开始的日期 */
+	private static String begin = null;
+
+	/** 更新数据标识 */
+	private static boolean getData = true;
 
 	private static List<PauseTime> pauseTimeList = new ArrayList<>();
 	private static List<ChangeTime> changeTimeList = new ArrayList<>();
@@ -183,7 +202,7 @@ public class WarningScreen extends JFrame {
 		panel.add(panel_1);
 		panel_1.setLayout(null);
 
-		line = new JLabel("\u7EBF\u522B:AA hanger Line");
+		line = new JLabel("\u7EBF\u522B:DOP2 Line");
 		line.setHorizontalAlignment(SwingConstants.CENTER);
 		line.setAlignmentX(Component.RIGHT_ALIGNMENT);
 		line.setBounds(219, 40, 774, 70);
@@ -208,11 +227,13 @@ public class WarningScreen extends JFrame {
 
 		greenLight = new Label("");
 		greenLight.setBackground(new Color(51, 255, 0));
+		greenLight.setBackground(new Color(190, 190, 190));
 		greenLight.setBounds(553, 140, 70, 70);
 		panel_1.add(greenLight);
 
 		blueLight = new Label("");
 		blueLight.setBackground(new Color(0, 51, 255));
+		blueLight.setBackground(new Color(190, 190, 190));
 		blueLight.setBounds(705, 140, 70, 70);
 		panel_1.add(blueLight);
 
@@ -410,10 +431,17 @@ public class WarningScreen extends JFrame {
 		SwingWorker getReal = getRealNum();
 		getReal.execute();
 
+		// 加班记录读取
+		SwingWorker updateWork = updateWork();
+		updateWork.execute();
+
+		// 短信邮件发送
+		// SwingWorker sendInfo = sendWarningInfo();
+		// sendInfo.execute();
 	}
 
 	/**
-	 * 设置Timer 1000ms实现一次动作 实际是一个线程
+	 * 设置Timer 1000ms实现一次动作 实际是一个线程。
 	 * 
 	 * @param time
 	 */
@@ -433,15 +461,15 @@ public class WarningScreen extends JFrame {
 	}
 
 	/**
-	 * 设置页面数值不停刷新(后台线程).<br >
-	 * 此线程掌管<b>休息时间</b>，<b>节拍时间</b>和<b>损失时间</b>
+	 * 设置页面数值不停刷新(后台线程)。<br >
+	 * 此线程掌管<b>休息时间</b>，<b>节拍时间</b>和<b>损失时间。</b>
 	 * 
 	 * @return
 	 */
 	private SwingWorker backgroundProcess() {
 		SwingWorker process = new SwingWorker<Void, Integer>() {
 			@Override
-			protected Void doInBackground() throws Exception {
+			protected Void doInBackground() {
 
 				// 损失时间处理
 				taktClock = new Clock(0, 0, 0);
@@ -451,8 +479,7 @@ public class WarningScreen extends JFrame {
 					@Override
 					public void actionPerformed(ActionEvent e) {
 						// ui更新
-						refreshUI(lostClock, taktClock, pauseClock);
-
+						refreshUI();
 					}
 
 					/**
@@ -462,23 +489,15 @@ public class WarningScreen extends JFrame {
 					 * @param taktClock
 					 * @param pauseClock
 					 */
-					private void refreshUI(Clock lostClock, Clock taktClock,
-							Clock pauseClock) {
-						// 时间损耗状态
-						if (redBtnCount > 0) {
-							isLost = true;
-						} else {
-							isLost = false;
-						}
+					private void refreshUI() {
 
 						/** 节拍倒计时 */
 						// 将时间换算成秒
 						taktTime = taktClock.getHours() * 60 * 60
 								+ taktClock.getMin() * 60
 								+ taktClock.getSecond();
-						boolean getData = true;
+						// 更新数据标识
 						if (taktTime > 1 && !isPause && !isChange) {
-							getData = false;
 							if (!isLost) {
 								greenLight.setBackground(new Color(51, 255, 0));
 							}
@@ -507,13 +526,11 @@ public class WarningScreen extends JFrame {
 							// 更新节拍数
 							taktClock.setSecond(taktTimeList.get(0).getTakt());
 							// 获取新数据标记 关
-							getData = false;
 						} else if (taktNum == 0 && !isPause && !isChange) {
 							taktTimeList.remove(0);
 							// 判断list是否为空
 							if (taktTimeList.size() > 0) {
 								// 获取新数据标记 关
-								getData = false;
 								// 获取新产节拍数
 								taktNum = taktTimeList.get(0).getNum();
 								// 更新节拍数
@@ -524,140 +541,6 @@ public class WarningScreen extends JFrame {
 										190));
 								taktNum = -1;
 							}
-						}
-
-						// 时间到，停线
-						if ((df_Hms.format(new Date())).equals("06:59:59")
-								|| (df_Hms.format(new Date()))
-										.equals("14:59:59")
-								|| (df_Hms.format(new Date()))
-										.equals("22:59:59")) {
-							System.out.println("time up !");
-
-							// 损耗标记归位
-							isLost = false;
-							isChange = false;
-							isPause = false;
-
-							// 四色灯全部变为灰色
-							redLight.setBackground(new Color(190, 190, 190));
-							blueLight.setBackground(new Color(190, 190, 190));
-							greenLight.setBackground(new Color(190, 190, 190));
-							yellowLight.setBackground(new Color(190, 190, 190));
-
-							// 实际产量清零
-							real_num.setText("0");
-							planIf_num.setText("0");
-							total_num.setText("0");
-
-							// Clock清空
-							pauseClock = new Clock(0, 0, 0);
-							lostClock = new Clock(0, 0, 0);
-							taktClock = new Clock(0, 0, 0);
-							changeClock = new Clock(0, 0, 0);
-
-							// 时间归位
-							lost_time.setText("00:00:00");
-							pause_time.setText("00:00:00");
-							takt_time.setText("00:00:00");
-
-							// list 清零
-							pauseTimeList.clear();
-							taktTimeList.clear();
-							changeTimeList.clear();
-
-							// 标记变量归位
-							taktCount = 0;
-							realCount = 0;
-							rangerNum = -1;
-							taktNum = -1;
-
-							// 计数归位
-							taktTime = 0;
-							pauseTime = 0;
-							lostTime = 0;
-							changeTimeCD = 0;
-
-							// TPPlanID归零
-							TPPlanID = 0;
-							// TPLineID归零
-							TPLineID = 0;
-
-						}
-
-						if (taktTimeList.size() <= 0 && getData) {
-
-							wld = new WarningLightDao();
-							greenLight.setBackground(new Color(190, 190, 190));
-
-							try {
-								if (TPLineID > 0) {
-									// 获取损失时间
-									String lostT = lost_time.getText();
-									// 损失时间插入数据库
-									wld.setTPLineLostTime(TPLineID, lostT);
-
-									// 获取实际产量
-									String realPro = real_num.getText();
-									// 实际产量插入数据库
-									wld.setTPLineRealNum(TPLineID,
-											Integer.parseInt(realPro));
-									// 重置
-									TPLineID = 0;
-								}
-
-								// 早中晚班开始运行
-								t_num = 0;
-								long nowHour = df_Hm.parse(
-										df_Hm.format(new Date())).getTime();
-
-								if (nowHour >= df_Hm.parse("07:00").getTime()
-										&& nowHour <= df_Hm.parse("14:59")
-												.getTime()) {
-									// 设定为早班
-									rangerNum = 0;
-									// 获取总量
-									String twoNum = wld.getTotalNum0();
-									t_num = Integer.parseInt(twoNum.split(";")[0]);
-									TPPlanID = Integer.parseInt(twoNum
-											.split(";")[1]);
-								} else if (nowHour >= df_Hm.parse("15:00")
-										.getTime()
-										&& nowHour <= df_Hm.parse("22:59")
-												.getTime()) {
-									// 设定为中班
-									rangerNum = 1;
-									// 获取总量
-									String twoNum = wld.getTotalNum1();
-									t_num = Integer.parseInt(twoNum.split(";")[0]);
-									TPPlanID = Integer.parseInt(twoNum
-											.split(";")[1]);
-								} else if ((nowHour >= df_Hm.parse("23:00")
-										.getTime() && nowHour <= df_Hm.parse(
-										"23:59").getTime())
-										|| (nowHour >= df_Hm.parse("00:00")
-												.getTime() && nowHour <= df_Hm
-												.parse("06:59").getTime())) {
-									// 设定为晚班
-									rangerNum = 2;
-									// 获取总量
-									String twoNum = wld.getTotalNum2();
-									t_num = Integer.parseInt(twoNum.split(";")[0]);
-									TPPlanID = Integer.parseInt(twoNum
-											.split(";")[1]);
-								}
-								if (t_num > 0) {
-									// 数据重新获取
-									getData();
-								}
-							} catch (SQLException e) {
-								e.printStackTrace();
-							} catch (ParseException e) {
-								e.printStackTrace();
-							} catch (Exception e) {
-								e.printStackTrace();
-							}
-
 						}
 
 						/** 休息倒计时设定 */
@@ -727,149 +610,290 @@ public class WarningScreen extends JFrame {
 							redLight.setBackground(new Color(190, 190, 190));
 						}
 
-						/** 换班倒计时 */
-						if (changeTimeList.size() > 0) {
-							if ((df_Hm.format(new Date()))
-									.equals(changeTimeList.get(0).getTime())) {
-								isChange = true;
-								greenLight.setBackground(new Color(190, 190,
-										190));
-								if (!isLost) {
-									blueLight.setBackground(new Color(0, 51,
-											255));
+						// /** 换班倒计时 */
+						// if (changeTimeList.size() > 0) {
+						// if ((df_Hm.format(new Date()))
+						// .equals(changeTimeList.get(0).getTime())) {
+						// isChange = true;
+						// greenLight.setBackground(new Color(190, 190,
+						// 190));
+						// if (!isLost) {
+						// blueLight.setBackground(new Color(0, 51,
+						// 255));
+						// }
+						// changeTimeCD = changeTimeList.get(0)
+						// .getDuration();
+						// System.out.println("Duration:"
+						// + changeTimeList.get(0).getDuration());
+						// changeTimeList.remove(0);
+						// }
+						// }
+						// // 如果状态是换班 并且剩余时间大于零 时间减少 否则关闭状态
+						// if (isChange && changeTimeCD > 0) {
+						// changeTimeCD--;
+						// if (!isLost) {
+						// blueLight.setBackground(new Color(0, 51, 255));
+						// }
+						// } else {
+						// isChange = false;
+						// blueLight.setBackground(new Color(190, 190, 190));
+						// }
+
+						// 时间到，停线，当前数据存入数据库
+						if ((df_Hm.format(new Date())).equals(endTime)) {
+							System.out.println("time up !");
+
+							wld = new WarningLightDao();
+							try {
+								if (TPLineID > 0) {
+									// 获取损失时间
+									String lostT = lost_time.getText();
+									// 损失时间插入数据库
+									wld.setTPLineLostTime(TPLineID, lostT);
+
+									// 获取实际产量
+									String realPro = real_num.getText();
+									// 实际产量插入数据库
+									wld.setTPLineRealNum(TPLineID,
+											Integer.parseInt(realPro));
+
+									// 获取计划产量
+									String planSum = planIf_num.getText();
+									// 计划产量插入数据库
+									wld.setTPLinePlanNum(TPLineID,
+											Integer.parseInt(planSum));
+
+									// 设置Status为2，2表示正常班次有效结束
+									wld.setTPLineStatusTo2(TPLineID);
+									// 重置
+									TPLineID = 0;
 								}
-								changeTimeCD = changeTimeList.get(0)
-										.getDuration();
-								System.out.println("Duration:"
-										+ changeTimeList.get(0).getDuration());
-								changeTimeList.remove(0);
+							} catch (SQLException e) {
+								e.printStackTrace();
 							}
+
+							// 重置除损失时间外的所有项
+							resetting();
+
+							// 重置损失时间
+							lostClock = new Clock(0, 0, 0);
+							lost_time.setText("00:00:00");
+							// 获取数据标识设为：获取
+							getData = true;
+
 						}
-						// 如果状态是换班 并且剩余时间大于零 时间减少 否则关闭状态
-						if (isChange && changeTimeCD > 0) {
-							changeTimeCD--;
-							if (!isLost) {
-								blueLight.setBackground(new Color(0, 51, 255));
+
+						if (getData) {
+							wld = new WarningLightDao();
+							try {
+								// 早中晚班开始运行
+								if (tpplan == null) {
+									// 实例化一个产线计划
+									tpplan = new TPPlan();
+									// 获取最新产线记录
+									tpplan = wld.getLatestTpplan();
+									if (tpplan != null) {
+										// 获取计划ID
+										TPPlanID = tpplan.getTPPlanID();
+										// 实例化一个产线模型
+										tpline = new TPLine();
+										tpline = wld
+												.getTplineWithTPPlanID(TPPlanID);
+										if (tpline != null) {
+											startTime = tpline.getStartTime();
+											endTime = tpline.getEndTime();
+											long startT = df_Hm
+													.parse(startTime).getTime();
+											long nowT = df_Hm.parse(
+													df_Hm.format((new Date())))
+													.getTime();
+											long diff = (nowT - startT) / 1000;
+											if (diff >= 0) {
+												// 设定班次
+												rangerNum = tpplan.getRanger();
+												// 获取总量
+												t_num = tpplan.getTotalNum();
+												// 数据重新获取
+												getData();
+											}
+										}
+									}
+								} else {
+									if (tpplan.getStatus() == 1) { // tpplan的状态
+										long startT = df_Hm.parse(startTime)
+												.getTime();
+										long nowT = df_Hm.parse(
+												df_Hm.format((new Date())))
+												.getTime();
+										long diff = (nowT - startT) / 1000;
+										if (diff >= 0) {
+											// 数据重新获取
+											getData();
+										}
+									} else {// 置空
+										tpplan = null;
+									}
+								}
+							} catch (SQLException e) {
+								e.printStackTrace();
+							} catch (ParseException e) {
+								e.printStackTrace();
+							} catch (Exception e) {
+								e.printStackTrace();
 							}
-						} else {
-							isChange = false;
-							blueLight.setBackground(new Color(190, 190, 190));
+
 						}
+
 					}
+
 				});
 				timeAction.start();
 				return null;
 			}
 
-			/**
-			 * 休息时间获取 换班时间获取 节拍时间处理
-			 * 
-			 * @throws Exception
-			 * @throws ParseException
-			 * @throws SQLException
-			 */
-			private void getData() throws Exception, ParseException,
-					SQLException {
-				wld = new WarningLightDao();
-				// 获得产线ID
-				TPLineID = wld.getTPLineIDByName(rangerNum);
-				if (TPLineID > 0) {
-					// 休息时间获取
-					String pauseTimes = wld.getRestTime(rangerNum);
-					if (pauseTimes != null && pauseTimes.length() > 5) {
-						for (String s : pauseTimes.split(";")) {
-							PauseTime pt = new PauseTime();
-							pt.setTime(s.split("-")[0]);
-							pt.setDuration((df_Hm.parse(s.split("-")[1])
-									.getTime() - df_Hm.parse(s.split("-")[0])
-									.getTime()) / 60000);
-							pauseTimeList.add(pt);
-						}
-						System.out.println(pauseTimeList);
-					}// end 休息时间获取
-
-					// 换班时间获取
-					String changeTime = wld.getChangeTime(rangerNum);
-					if (changeTime != null && changeTime.length() > 5) {
-						for (String s : changeTime.split(";")) {
-							ChangeTime ct = new ChangeTime();
-							ct.setTime(s.split("-")[0]);
-							ct.setDuration((df_Hm.parse(s.split("-")[1])
-									.getTime() - df_Hm.parse(s.split("-")[0])
-									.getTime()) / 1000);
-							changeTimeList.add(ct);
-						}
-					}// end 换班时间获取
-
-					/** 节拍时间处理 */
-					// 更新总量
-					total_num.setText("" + t_num);
-					// 标记此计划记录已读
-					wld.setTPPlanStatusTo0(TPPlanID);
-					// 标记此产线记录已读
-					wld.setTPLineStatusTo0(rangerNum);
-					// 获取节拍列表
-					taktTimeList = wld.getTaktByTPLineID(TPLineID);
-					// 给taktNum赋初值
-					taktNum = taktTimeList.get(0).getNum();
-					int nowtaktnum = taktTimeList.get(0).getTakt();
-					if (rangerNum == 0) {// 早班情况
-						long diffTime = (df_Hm
-								.parse(df_Hm.format((new Date()))).getTime() - df_Hm
-								.parse("07:00").getTime()) / 1000;
-						while (diffTime > 0) {
-							if (taktNum == 0) {
-								taktTimeList.remove(0);
-								taktNum = taktTimeList.get(0).getNum();
-								nowtaktnum = taktTimeList.get(0).getTakt();
-							}
-							diffTime -= nowtaktnum;
-							taktNum--;
-							taktCount++;
-						}
-					} else if (rangerNum == 1) {// 中班情况
-						long diffTime = (df_Hm
-								.parse(df_Hm.format((new Date()))).getTime() - df_Hm
-								.parse("15:00").getTime()) / 1000;
-						while (diffTime > 0) {
-							if (taktNum == 0) {
-								taktTimeList.remove(0);
-								taktNum = taktTimeList.get(0).getNum();
-								nowtaktnum = taktTimeList.get(0).getTakt();
-							}
-							diffTime -= nowtaktnum;
-							taktNum--;
-							taktCount++;
-						}
-					} else if (rangerNum == 2) {// 晚班情况
-						long diffTime = 0;
-						long now = df_Hm.parse(df_Hm.format((new Date())))
-								.getTime();
-						if (now < 57600) {
-							diffTime = (now - df_Hm.parse("23:00").getTime()) / 1000;
-						} else {
-							diffTime = (now - df_Hm.parse("00:00").getTime()) / 1000 + 3600;
-						}
-						while (diffTime > 0) {
-							if (taktNum == 0) {
-								taktTimeList.remove(0);
-								taktNum = taktTimeList.get(0).getNum();
-								nowtaktnum = taktTimeList.get(0).getTakt();
-							}
-							diffTime -= nowtaktnum;
-							taktNum--;
-							taktCount++;
-						}
-					}
-					planIf_num.setText(taktCount + "");
-				}
-			}
 		};
 		return process;
 	}
 
 	/**
-	 * 实时读取数据库，获取实际产量
+	 * 休息时间获取 换班时间获取 节拍时间处理。
+	 * 
+	 * @throws Exception
+	 * @throws ParseException
+	 * @throws SQLException
+	 */
+	private void getData() throws Exception, ParseException, SQLException {
+		// 更新日期
+		begin = df_ymr.format(new Date());
+		wld = new WarningLightDao();
+		// 获得产线ID
+		TPLineID = tpline.getTPLineID();
+		// 休息时间获取
+		String pauseTimes = tpline.getRestTime();
+		if (pauseTimes != null && pauseTimes.length() > 5) {
+			for (String s : pauseTimes.split(";")) {
+				long duration = (df_Hm.parse(s.split("-")[1]).getTime() - df_Hm
+						.parse(s.split("-")[0]).getTime()) / 60000;
+				if (duration > 0) {// 存在时间差则存入模型，并插入list
+					PauseTime pt = new PauseTime();
+					pt.setTime(s.split("-")[0]);
+					pt.setDuration(duration);
+					pauseTimeList.add(pt);
+				}
+			}
+			System.out.println(pauseTimeList.toString());
+		}// end 休息时间获取
+
+		// 换班时间获取
+		// String changeTime = wld.getChangeTime(rangerNum);
+		// if (changeTime != null && changeTime.length() > 5) {
+		// for (String s : changeTime.split(";")) {
+		// ChangeTime ct = new ChangeTime();
+		// ct.setTime(s.split("-")[0]);
+		// ct.setDuration((df_Hm.parse(s.split("-")[1])
+		// .getTime() - df_Hm.parse(s.split("-")[0])
+		// .getTime()) / 1000);
+		// changeTimeList.add(ct);
+		// }
+		// }// end 换班时间获取
+
+		/** 节拍时间处理 */
+		// 更新总量
+		total_num.setText("" + t_num);
+		// 标记此计划记录已读
+		wld.setTPPlanStatusTo0(TPPlanID);
+		// 标记此产线记录已读
+		wld.setTPLineStatusTo0(TPLineID);
+		// 获取节拍列表
+		taktTimeList = wld.getTaktByTPLineID(TPLineID);
+		// 给taktNum赋初值
+		taktNum = taktTimeList.get(0).getNum();
+		int nowtaktnum = taktTimeList.get(0).getTakt();
+		long diffTime = (df_Hm.parse(df_Hm.format((new Date()))).getTime() - df_Hm
+				.parse(startTime).getTime()) / 1000;
+		while (diffTime > 0) {
+			if (taktNum == 0) {
+				taktTimeList.remove(0);
+				taktNum = taktTimeList.get(0).getNum();
+				nowtaktnum = taktTimeList.get(0).getTakt();
+			}
+			diffTime -= nowtaktnum;
+			taktNum--;
+			taktCount++;
+		}
+		// 更新时间差产生的节拍
+		planIf_num.setText(taktCount + "");
+		// 清空模型
+		tpplan = null;
+		tpline = null;
+		getData = false;
+	}
+
+	/**
+	 * 重置程序所有数据，但不重置损失时间。
+	 */
+	private void resetting() {
+		// 损耗标记归位
+		isLost = false;
+		isChange = false;
+		isPause = false;
+
+		// 四色灯全部变为灰色
+		redLight.setBackground(new Color(190, 190, 190));
+		blueLight.setBackground(new Color(190, 190, 190));
+		greenLight.setBackground(new Color(190, 190, 190));
+		yellowLight.setBackground(new Color(190, 190, 190));
+
+		// 实际产量清零
+		real_num.setText("0");
+		planIf_num.setText("0");
+		total_num.setText("0");
+
+		// Clock清空
+		pauseClock = new Clock(0, 0, 0);
+		// lostClock = new Clock(0, 0, 0);
+		taktClock = new Clock(0, 0, 0);
+		changeClock = new Clock(0, 0, 0);
+
+		// 时间归位
+		// lost_time.setText("00:00:00");
+		pause_time.setText("00:00:00");
+		takt_time.setText("00:00:00");
+
+		// list 清零
+		pauseTimeList.clear();
+		taktTimeList.clear();
+		changeTimeList.clear();
+
+		// 模型置空
+		tpplan = null;
+		tpline = null;
+
+		// 上下班时间
+		startTime = null;
+		endTime = null;
+
+		// 标记变量归位
+		taktCount = 0;
+		realCount = 0;
+		rangerNum = -1;
+		taktNum = -1;
+
+		// 计数归位
+		t_num = 0;
+		taktTime = 0;
+		pauseTime = 0;
+		lostTime = 0;
+		changeTimeCD = 0;
+
+		// TPPlanID归零
+		TPPlanID = 0;
+		// TPLineID归零
+		TPLineID = 0;
+	}
+
+	/**
+	 * 实时读取数据库，获取实际产量。
 	 * 
 	 * @return
 	 */
@@ -881,18 +905,21 @@ public class WarningScreen extends JFrame {
 				wld = new WarningLightDao();
 				while (true) {
 					if (taktCount > 0) {
-						if (rangerNum == 0) {
-							realCount = wld.getRealNum_zao();
-						} else if (rangerNum == 1) {
-							realCount = wld.getRealNum_zhong();
-						} else if (rangerNum == 2) {
-							realCount = wld.getRealNum_wan();
-						}
+						// if (rangerNum == 0) {
+						// realCount = wld.getRealNum_zao();
+						// } else if (rangerNum == 1) {
+						// realCount = wld.getRealNum_zhong();
+						// } else if (rangerNum == 2) {
+						// realCount = wld.getRealNum_wan();
+						// }
+						// 获取实际产量
+						realCount = wld.getRealNumWithTime(begin, startTime,
+								endTime);
 					}
-					if (realCount > 0) {
+					if (realCount > 0) {// 更新UI
 						publish(realCount);
 					}
-					Thread.sleep(60000);
+					Thread.sleep(30000);
 				}
 			}
 
@@ -907,7 +934,7 @@ public class WarningScreen extends JFrame {
 	}
 
 	/**
-	 * 日期时间的更新
+	 * 日期时间的更新。
 	 * 
 	 * @return
 	 */
@@ -922,7 +949,7 @@ public class WarningScreen extends JFrame {
 							|| "00:01".equals(df_Hm.format(d))) {
 						publish(df_ymr.format(d));
 					}
-					Thread.sleep(60000);
+					Thread.sleep(30000);
 				}
 			}
 
@@ -938,7 +965,7 @@ public class WarningScreen extends JFrame {
 	}
 
 	/**
-	 * 监控按钮状态
+	 * 监控按钮状态。
 	 * 
 	 * @return
 	 */
@@ -946,9 +973,8 @@ public class WarningScreen extends JFrame {
 		SwingWorker background = new SwingWorker<String, int[]>() {
 
 			@Override
-			protected String doInBackground() throws Exception {
+			protected String doInBackground() throws InterruptedException {
 
-				wld = new WarningLightDao();
 				// while (true) {
 				// 红色按钮计数复位
 				// if (redBtnCount < 0) {
@@ -969,25 +995,42 @@ public class WarningScreen extends JFrame {
 				// }
 				// Thread.sleep(20);
 
-				wld = new WarningLightDao();
 				List<AlarmData> adList = new ArrayList<AlarmData>();
 				int id = 0;
 				while (true) {
+					wld = new WarningLightDao();
 					// 获取最新按钮状态
-					adList = wld.getNewButtonStat2();
-					// 红色按钮计数复位
-					if (redBtnCount < 0) {
-						redBtnCount = 0;
+					try {
+						adList = wld.getNewButtonStat2();
+					} catch (SQLException e) {
+						System.out.println("读取按钮时发生异常");
+						e.printStackTrace();
 					}
+					// 时间损耗状态
+					if (redBtnCount > 0) {// 大于零存在损耗
+						isLost = true;
+					} else {
+						isLost = false;
+					}
+					// 红色按钮计数复位
+					redBtnCount = 8;
 					for (AlarmData l : adList) {
 						int[] s = new int[3];
 						s[0] = Integer.parseInt(l.getBid());
 						s[1] = Integer.parseInt(l.getKeyid());
 						s[2] = l.getYn();
+						// 根据红色按钮的状态计数
+						if (s[1] == 1 || s[1] == 4) {
+							if (s[2] == 1) {
+								redBtnCount++;
+							} else {
+								redBtnCount--;
+							}
+						}
 						Thread.sleep(50);
 						publish(s);
 					}
-					Thread.sleep(500);
+					Thread.sleep(300);
 				}
 
 			}
@@ -1002,19 +1045,26 @@ public class WarningScreen extends JFrame {
 				 * new Color(51, 255, 0) green
 				 */
 				// 一号板 1 5 9 13 17
-				case 9:
+				case 17:
 					switch (btn[1]) {
 					case 1:
 						if (btn[2] == 1) {
 							p01.setBackground(new Color(255, 51, 0));
+							if (!red1) {
+								// 警告记录存入数据库
+								if (rangerNum >= 0) {
+									addWarningInfo("DOP2;1");
+								}
+								red1 = true;
+							}
 							isLost = true;
-							red1 = true;
-							redBtnCount++;
 						} else {
 							if (!green1 && !yellow1) {
 								p01.setBackground(Color.DARK_GRAY);
 							}
-							redBtnCount--;
+							if (red1) {
+								dealWittturBtnWarningToLewei("DOP2;1");
+							}
 							red1 = false;
 						}
 						break;
@@ -1047,15 +1097,22 @@ public class WarningScreen extends JFrame {
 					case 4:
 						if (btn[2] == 1) {
 							p02.setBackground(new Color(255, 51, 0));
+							if (!red2) {
+								red2 = true;
+								// 警告记录存入数据库
+								if (rangerNum >= 0) {
+									addWarningInfo("DOP2;2");
+								}
+							}
 							isLost = true;
-							red2 = true;
-							redBtnCount++;
 						} else {
 							if (!green2 && !yellow2) {
 								p02.setBackground(Color.DARK_GRAY);
 							}
+							if (red2) {
+								dealWittturBtnWarningToLewei("DOP2;2");
+							}
 							red2 = false;
-							redBtnCount--;
 						}
 						break;
 					case 5:
@@ -1090,20 +1147,27 @@ public class WarningScreen extends JFrame {
 					}
 					break;
 				// 二号板 2 6 10 14 18
-				case 10:
+				case 18:
 					switch (btn[1]) {
 					case 1:
 						if (btn[2] == 1) {
 							p03.setBackground(new Color(255, 51, 0));
+							if (!red3) {
+								red3 = true;
+								// 警告记录存入数据库
+								if (rangerNum >= 0) {
+									addWarningInfo("DOP2;3");
+								}
+							}
 							isLost = true;
-							red3 = true;
-							redBtnCount++;
 						} else {
 							if (!green3 && !yellow3) {
 								p03.setBackground(Color.DARK_GRAY);
 							}
+							if (red3) {
+								dealWittturBtnWarningToLewei("DOP2;3");
+							}
 							red3 = false;
-							redBtnCount--;
 						}
 						break;
 					case 2:
@@ -1135,15 +1199,22 @@ public class WarningScreen extends JFrame {
 					case 4:
 						if (btn[2] == 1) {
 							p04.setBackground(new Color(255, 51, 0));
+							if (!red4) {
+								red4 = true;
+								// 警告记录存入数据库
+								if (rangerNum >= 0) {
+									addWarningInfo("DOP2;4");
+								}
+							}
 							isLost = true;
-							red4 = true;
-							redBtnCount++;
 						} else {
 							if (!green4 && !yellow4) {
 								p04.setBackground(Color.DARK_GRAY);
 							}
+							if (red4) {
+								dealWittturBtnWarningToLewei("DOP2;4");
+							}
 							red4 = false;
-							redBtnCount--;
 						}
 						break;
 					case 5:
@@ -1178,20 +1249,27 @@ public class WarningScreen extends JFrame {
 					}
 					break;
 				// 三号板 3 7 11 15 19
-				case 11:
+				case 19:
 					switch (btn[1]) {
 					case 1:
 						if (btn[2] == 1) {
 							p05.setBackground(new Color(255, 51, 0));
+							if (!red5) {
+								red5 = true;
+								// 警告记录存入数据库
+								if (rangerNum >= 0) {
+									addWarningInfo("DOP2;5");
+								}
+							}
 							isLost = true;
-							red5 = true;
-							redBtnCount++;
 						} else {
 							if (!green5 && !yellow5) {
 								p05.setBackground(Color.DARK_GRAY);
 							}
+							if (red5) {
+								dealWittturBtnWarningToLewei("DOP2;5");
+							}
 							red5 = false;
-							redBtnCount--;
 						}
 						break;
 					case 2:
@@ -1223,15 +1301,22 @@ public class WarningScreen extends JFrame {
 					case 4:
 						if (btn[2] == 1) {
 							p06.setBackground(new Color(255, 51, 0));
+							if (!red6) {
+								red6 = true;
+								// 警告记录存入数据库
+								if (rangerNum >= 0) {
+									addWarningInfo("DOP2;6");
+								}
+							}
 							isLost = true;
-							red6 = true;
-							redBtnCount++;
 						} else {
 							if (!yellow6 && !green6) {
 								p06.setBackground(Color.DARK_GRAY);
 							}
+							if (red6) {
+								dealWittturBtnWarningToLewei("DOP2;6");
+							}
 							red6 = false;
-							redBtnCount--;
 						}
 						break;
 					case 5:
@@ -1266,20 +1351,27 @@ public class WarningScreen extends JFrame {
 					}
 					break;
 				// 四号板 4 8 12 16 20
-				case 12:
+				case 20:
 					switch (btn[1]) {
 					case 1:
 						if (btn[2] == 1) {
 							p07.setBackground(new Color(255, 51, 0));
+							if (!red7) {
+								red7 = true;
+								// 警告记录存入数据库
+								if (rangerNum >= 0) {
+									addWarningInfo("DOP2;7");
+								}
+							}
 							isLost = true;
-							red7 = true;
-							redBtnCount++;
 						} else {
 							if (!yellow7 && !green7) {
 								p07.setBackground(Color.DARK_GRAY);
 							}
+							if (red7) {
+								dealWittturBtnWarningToLewei("DOP2;7");
+							}
 							red7 = false;
-							redBtnCount--;
 						}
 						break;
 					case 2:
@@ -1311,15 +1403,22 @@ public class WarningScreen extends JFrame {
 					case 4:
 						if (btn[2] == 1) {
 							p08.setBackground(new Color(255, 51, 0));
+							if (!red8) {
+								red8 = true;
+								// 警告记录存入数据库
+								if (rangerNum >= 0) {
+									addWarningInfo("DOP2;8");
+								}
+							}
+							if (red8) {
+								dealWittturBtnWarningToLewei("DOP2;8");
+							}
 							isLost = true;
-							red8 = true;
-							redBtnCount++;
 						} else {
 							if (!yellow8 && !green8) {
 								p08.setBackground(Color.DARK_GRAY);
 							}
 							red8 = false;
-							redBtnCount--;
 						}
 						break;
 					case 5:
@@ -1358,7 +1457,166 @@ public class WarningScreen extends JFrame {
 					break;
 				}
 			}
+
+			/**
+			 * 处理预警信息为已处理。
+			 */
+			private void dealWittturBtnWarningToLewei(String code) {
+				wld = new WarningLightDao();
+				try {
+					wld.dealWittturBtnWarningToLewei(code);
+				} catch (SQLException e) {
+					e.printStackTrace();
+				}
+			}
+
+			/**
+			 * 警告记录存入数据库
+			 * 
+			 * @param string
+			 */
+			private void addWarningInfo(String string) {
+				wld = new WarningLightDao();
+				String remark = "请注意！线别：" + string.split(";")[0] + "， "
+						+ string.split(";")[1] + " 号工位停线！";
+				try {
+					// 当前工位存入当前产线
+					wld.insertWorkStation(TPLineID, string.split(";")[1]);
+					// 预警消息存入数据库
+					wld.addWarningInfo(remark);
+
+					// 传送到乐维服务器
+					Warning w = new Warning();
+					w.setCustomerCode(string);
+					w.setStatus(0);
+					w.setWarningHandler("产线班长");
+					w.setWarningSite("产线");
+					w.setWarningType("按灯警告");
+					wld.addWittturBtnWarningToLewei(w);
+				} catch (SQLException e) {
+					System.out.println("插入预警信息出错！");
+					e.printStackTrace();
+				}
+			}
 		};
 		return background;
+	}
+
+	/**
+	 * 读取更新产线信息。
+	 * 
+	 * @return
+	 */
+	private SwingWorker updateWork() {
+		SwingWorker update = new SwingWorker<Void, Void>() {
+
+			@Override
+			protected Void doInBackground() throws Exception {
+				wld = new WarningLightDao();
+				TPPlan plan;
+				while (true) {
+					if (rangerNum >= 0) {
+						plan = new TPPlan();
+						// 获取新插入的信息
+						plan = wld.getUpdateWork(rangerNum);
+						if (plan != null) { // 当存在新纪录时
+							System.out.println("新纪录已读取！");
+							// 重置程序
+							resetting();
+
+							// 计划模型更新
+							tpplan = plan;
+							// 班次设定
+							rangerNum = plan.getRanger();
+							// 获取总量
+							t_num = plan.getTotalNum();
+							// 获得计划ID
+							TPPlanID = plan.getTPPlanID();
+							// 获取一个line
+							tpline = new TPLine();
+							tpline = wld.getTplineWithTPPlanID(TPPlanID);
+
+							if (tpline != null) {
+								// 开始时间更新
+								startTime = tpline.getStartTime();
+								// 结束时间更新
+								endTime = tpline.getEndTime();
+								long startT = df_Hm.parse(startTime).getTime();
+								long nowT = df_Hm.parse(
+										df_Hm.format((new Date()))).getTime();
+								long diff = (nowT - startT) / 1000;
+								// 如果开始时间大于等于当前时间
+								if (diff >= 0) {
+									// 数据重新获取
+									getData();
+								}
+							}
+						}
+					}
+					Thread.sleep(10000);
+				}
+			}
+
+		};
+		return update;
+
+	}
+
+	/**
+	 * 预警信息发送。<br>
+	 * 通过短信和邮件。
+	 * 
+	 * @return
+	 */
+	private SwingWorker sendWarningInfo() {
+		SwingWorker send = new SwingWorker<Void, Void>() {
+			@Override
+			protected Void doInBackground() throws Exception {
+				WarningInfo wInfo = new WarningInfo();
+				wld = new WarningLightDao();
+				// 实例化接收短信的号码list
+				List<String> phoneNumberList = new ArrayList<>();
+				// 实例化接收邮件的邮箱list
+				List<String> emailList = new ArrayList<>();
+				// 实例化串口发短信
+				ComputeSmsData sms = new ComputeSmsData();
+				SerialToGsm stg;
+				// 实例化javaMail对象
+				SendMail sm = new SendMail();
+				while (true) {
+					if (taktNum >= 1) {
+						wInfo = wld.getWarningInfo();
+						if (wInfo != null) {
+							System.out.println("begin send!");
+							/** 发送短信 */
+							// 获取收信号码
+							phoneNumberList = wld.getPhoneNumber();
+							// 循环list，发送短信
+							for (String p : phoneNumberList) {
+								stg = new SerialToGsm("COM4");
+								System.out.println("phoneNumber：" + p);
+								stg.sendSms(p, wInfo.getContent());
+								Thread.sleep(2000);
+							}
+							System.out.println("end message!");
+							/** 发送邮件 */
+							// 获取收件箱地址
+							emailList = wld.getEmailAddress();
+							for (String e : emailList) {
+								System.out.println("emailAddress：" + e);
+								sm.sendWarningEmail(e, wInfo.getContent());
+								Thread.sleep(2000);
+							}
+							System.out.println("end mail!");
+							/** 标记预警已读 */
+							wld.setWarningInfoAsReaded(wInfo.getInfoID());
+						}
+					}
+					Thread.sleep(1000);
+				}
+			}
+		};
+		return send;
+
 	}
 }
