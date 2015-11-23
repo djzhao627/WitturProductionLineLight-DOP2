@@ -722,6 +722,7 @@ public class WarningLightDao {
 		}
 		rs.close();
 		statement.close();
+		conn.close();
 		return info;
 	}
 
@@ -781,6 +782,7 @@ public class WarningLightDao {
 				.executeUpdate("UPDATE warninginfo SET Status = 0 WHERE InfoID = "
 						+ infoID);
 		statement.close();
+		conn.close();
 		return row;
 	}
 
@@ -859,6 +861,8 @@ public class WarningLightDao {
 		r = statement
 				.executeUpdate("UPDATE warning_info SET status = 1 WHERE customerCode = '"
 						+ code + "'");
+		statement.close();
+		conn.close();
 		return r > 0 ? true : false;
 	}
 
