@@ -441,8 +441,8 @@ public class WarningScreen extends JFrame {
 		updateWork.execute();
 
 		// 上传预警信息到乐维服务器
-		SwingWorker uploadInfo = uploadWarningInfoToLewei();
-		uploadInfo.execute();
+		// SwingWorker uploadInfo = uploadWarningInfoToLewei();
+		// uploadInfo.execute();
 
 		// 短信邮件发送
 		// SwingWorker sendInfo = sendWarningInfo();
@@ -913,7 +913,7 @@ public class WarningScreen extends JFrame {
 			protected String doInBackground() throws Exception {
 				wld = new WarningLightDao();
 				while (true) {
-					if (taktCount > 0) {
+					if (rangerNum >= 0) {
 						// if (rangerNum == 0) {
 						// realCount = wld.getRealNum_zao();
 						// } else if (rangerNum == 1) {
@@ -1054,7 +1054,7 @@ public class WarningScreen extends JFrame {
 				 * new Color(51, 255, 0) green
 				 */
 				// 一号板 1 5 9 13 17
-				case 13:
+				case 17:
 					switch (btn[1]) {
 					case 1:
 						if (btn[2] == 1) {
@@ -1158,7 +1158,7 @@ public class WarningScreen extends JFrame {
 					}
 					break;
 				// 二号板 2 6 10 14 18
-				case 14:
+				case 18:
 					switch (btn[1]) {
 					case 1:
 						if (btn[2] == 1) {
@@ -1262,7 +1262,7 @@ public class WarningScreen extends JFrame {
 					}
 					break;
 				// 三号板 3 7 11 15 19
-				case 15:
+				case 19:
 					switch (btn[1]) {
 					case 1:
 						if (btn[2] == 1) {
@@ -1366,7 +1366,7 @@ public class WarningScreen extends JFrame {
 					}
 					break;
 				// 四号板 4 8 12 16 20
-				case 16:
+				case 20:
 					switch (btn[1]) {
 					case 1:
 						if (btn[2] == 1) {
@@ -1488,7 +1488,7 @@ public class WarningScreen extends JFrame {
 					// 当前工位存入当前产线
 					wld.insertWorkStation(TPLineID, string.split(";")[1]);
 					// 预警消息存入数据库
-					wld.addWarningInfo(remark);
+					wld.addWarningInfo(remark, 4);// 数字表示当前线别ID
 				} catch (SQLException e) {
 					System.out.println("插入预警信息出错！");
 					e.printStackTrace();

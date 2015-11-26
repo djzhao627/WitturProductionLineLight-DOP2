@@ -20,30 +20,31 @@ public class OracleUtils {
 
 	private static final String password = "abc123";
 
-	public static Connection getConnection() {
+	public Connection getConnection() {
 		Connection connection = null;
 		try {
 			Class.forName(driverUrl);
 			connection = DriverManager.getConnection(url, username, password);
-			// connection.close();
 		} catch (ClassNotFoundException e) {
 			e.printStackTrace();
 		} catch (SQLException e) {
+			System.out.println("Oracle Stop time : " + new Date());
 			try {
-				Thread.sleep(10000);
+				Thread.sleep(15000);
 			} catch (InterruptedException e1) {
 				e1.printStackTrace();
 			}
-			System.out.println("Oracle Stop time : " + new Date());
-			OracleUtils.getConnection();
+			connection = this.getConnection();
+			System.out.println("conn:" + connection);
 			e.printStackTrace();
+		} finally {
+			return connection;
 		}
-		return connection;
 	}
 
 	// 测试Oracle连接是否成功
 	public static void main(String[] args) throws SQLException {
-		Connection connection = OracleUtils.getConnection();
+		Connection connection = new OracleUtils().getConnection();
 		System.out.println("连接成功：" + connection);
 		Statement statement = connection.createStatement();
 		// DOP线为分离

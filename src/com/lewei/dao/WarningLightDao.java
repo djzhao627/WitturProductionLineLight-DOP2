@@ -373,7 +373,7 @@ public class WarningLightDao {
 	public int getRealNumWithTime(String begin, String start, String end)
 			throws SQLException {
 		int num = 0;
-		Connection connection = OracleUtils.getConnection();
+		Connection connection = new OracleUtils().getConnection();
 		Statement statement = connection.createStatement();
 		ResultSet rs = null;
 
@@ -441,7 +441,7 @@ public class WarningLightDao {
 	 */
 	public int getRealNum_zao() throws SQLException {
 		int num = 0;
-		Connection connection = OracleUtils.getConnection();
+		Connection connection = new OracleUtils().getConnection();
 		Statement statement = connection.createStatement();
 		Date date = new Date();
 		Calendar c = new GregorianCalendar();
@@ -501,7 +501,7 @@ public class WarningLightDao {
 	 */
 	public int getRealNum_zhong() throws SQLException {
 		int num = 0;
-		Connection connection = OracleUtils.getConnection();
+		Connection connection = new OracleUtils().getConnection();
 		Statement statement = connection.createStatement();
 		Date date = new Date();
 		Calendar c = new GregorianCalendar();
@@ -544,7 +544,7 @@ public class WarningLightDao {
 	 */
 	public int getRealNum_wan() throws SQLException {
 		int num = 0;
-		Connection connection = OracleUtils.getConnection();
+		Connection connection = new OracleUtils().getConnection();
 		Statement statement = connection.createStatement();
 		Date date = new Date();
 		Calendar c = new GregorianCalendar();
@@ -691,13 +691,13 @@ public class WarningLightDao {
 	 * @return int
 	 * @throws SQLException
 	 */
-	public int addWarningInfo(String remark) throws SQLException {
+	public int addWarningInfo(String remark, int lineID) throws SQLException {
 		int row = 0;
 		Connection conn = new MySQLDBUtil().getConn();
 		Statement statement = conn.createStatement();
 		row = statement
-				.executeUpdate("INSERT INTO warninginfo (Content) VALUES ('"
-						+ remark + "')");
+				.executeUpdate("INSERT INTO warninginfo (Content, LineID) VALUES ('"
+						+ remark + "', " + lineID + ")");
 		statement.close();
 		conn.close();
 		return row;
